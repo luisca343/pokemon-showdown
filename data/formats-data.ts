@@ -5654,6 +5654,9 @@ export const FormatsData: import('../sim/dex-species').SpeciesFormatsDataTable =
 		doublesTier: "(DUU)",
 		natDexTier: "RUBL",
 	},
+	cococute: {
+		tier: "LC",
+	},
 	missingno: {
 		isNonstandard: "Custom",
 		tier: "Illegal",
