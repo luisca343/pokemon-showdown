@@ -18467,6 +18467,18 @@ export const Pokedex: import('../sim/dex-species').SpeciesDataTable = {
 		tags: ["Mythical"],
 		eggGroups: ["Undiscovered"],
 	},
+	cococute: {
+		num: 10000,
+		name: "Cococute",
+		types: ["Grass", "Water"],
+		baseStats: { hp: 60, atk: 40, def: 80, spa: 60, spd: 45, spe: 40 },
+		abilities: { 0: "Chlorophyll", H: "Harvest" },
+		heightm: 0.4,
+		weightkg: 2.5,
+		color: "Brown",
+		evos: ["Exeggutor", "Exeggutor-Alola"],
+		eggGroups: ["Grass"],
+	},
 	missingno: {
 		num: 0,
 		name: "MissingNo.",
