@@ -167,6 +167,7 @@ export class LadderTracker {
 
 	tracking(battle: Rooms.RoomBattle, rating: number) {
 		const minElo = Math.floor(Number(battle.rated) || 0);
+		if (battle.format !== this.config.format) return false;
 		if (!minElo || minElo < 1000) {
 			return false;
 		}
@@ -223,34 +224,38 @@ export class LadderTracker {
 	async getLeaderboard(display?: boolean) {
 		const url = `https://pokemonshowdown.com/ladder/${this.format}.json?prefix=${this.prefix}`;
 		const leaderboard: LeaderboardEntry[] = [];
+		let response;
 		try {
-			const response = await Net(url).get().then(JSON.parse);
-			this.leaderboard.lookup = new Map();
-			for (const data of response.toplist) {
-				// TODO: move the rounding until later
-				const entry: LeaderboardEntry = {
-					name: data.username,
-					elo: Math.round(data.elo),
-					gxe: data.gxe,
-					glicko: Math.round(data.rpr),
-					glickodev: Math.round(data.rprd),
-				};
-				this.leaderboard.lookup.set(data.userid, entry);
-				if (!data.userid.startsWith(this.prefix)) continue;
-				entry.rank = leaderboard.length + 1;
-				leaderboard.push(entry);
+			response = await Net(url).get().then(JSON.parse);
+		} catch (e: any) {
+			if (e.name === 'SyntaxError') { // sometimes the page 404s, meaning invalid json. skip!
+				response = { toplist: [] };
+			} else {
+				if (display) throw new Chat.ErrorMessage('Failed to fetch leaderboard. Try again later.');
+				return leaderboard;
 			}
-			if (display) {
-				this.addHTML(this.styleLeaderboard(leaderboard), true);
-				this.leaderboard.last = leaderboard;
-				this.changed = false;
-				this.lines = { them: 0, total: 0 };
-			}
-		} catch (err: any) {
-			Monitor.crashlog(err, 'a ladder tracker request', this.config);
-			if (display) throw new Chat.ErrorMessage(`Unable to fetch the leaderboard for ${this.prefix}.`);
 		}
 
+		this.leaderboard.lookup = new Map();
+		for (const data of response.toplist) {
+			// TODO: move the rounding until later
+			const entry: LeaderboardEntry = {
+				name: data.username,
+				elo: Math.round(data.elo),
+				gxe: data.gxe,
+				glicko: Math.round(data.rpr),
+				glickodev: Math.round(data.rprd),
+			};
+			this.leaderboard.lookup.set(data.userid, entry);
+			if (!data.userid.startsWith(this.prefix)) continue;
+			entry.rank = leaderboard.length + 1;
+			leaderboard.push(entry);
+		}
+		if (display) {
+			this.leaderboard.last = leaderboard;
+			this.changed = false;
+			this.lines = { them: 0, total: 0 };
+		}
 		return leaderboard;
 	}
 
@@ -381,11 +386,13 @@ export class LadderTracker {
 	}
 
 	togglePrefix(oldPrefix?: ID) {
-		if (this.room.settings.isPrivate === undefined) {
+		if (!this.room.settings.isPrivate) {
 			try {
 				if (oldPrefix) prefixManager.removePrefix(oldPrefix, 'privacy');
 			} catch {} // suppress errorMessages in case it's the first start and it hasn't been made priv yet
-			prefixManager.addPrefix(this.prefix, 'privacy');
+			try {
+				prefixManager.addPrefix(this.prefix, 'privacy');
+			} catch {} // same as above
 		}
 	}
 
@@ -413,7 +420,7 @@ export class LadderTracker {
 	}
 }
 
-const trackers: Record<string, LadderTracker> = {};
+export const trackers: Record<string, LadderTracker> = {};
 try {
 	const data = JSON.parse(FS("config/chat-plugins/laddertrackers.json").readIfExistsSync() || "{}");
 	for (const roomid in data) {
@@ -487,7 +494,8 @@ export const commands: Chat.ChatCommands = {
 		async leaderboard(target, room, user, sf, cmd) {
 			const tracker = LadderTracker.getTracker(this);
 			this.runBroadcast();
-			await tracker.getLeaderboard(true);
+			const leaderboard = await tracker.getLeaderboard(this.broadcasting);
+			this.sendReplyBox(tracker.styleLeaderboard(leaderboard));
 		},
 		prefix(target, room, user, sf) {
 			const tracker = LadderTracker.getTracker(this);
@@ -632,7 +640,7 @@ export const commands: Chat.ChatCommands = {
 	laddertrackhelp() {
 		this.runBroadcast();
 		this.sendReplyBox([
-			`- /laddertrack OR /ld displays a page to start a tracker (requires % in the room to do so).`,
+			`- /laddertrack OR /ld displays a page to start a tracker (requires # in the room to do so).`,
 			// ` (can also be used with key=value formatted args to start it directly - requires keys: rating, prefix, format, deadline, cutoff)`,
 			` - /laddertrack [leaderboard/top] - updates and displays the current leaderboard`,
 			` - /laddertrack deadline [optional date] - displays the current deadline, or sets the deadline to the given deadline if one is given (requires % to do so)`,
@@ -677,7 +685,7 @@ export const pages: Chat.PageTable = {
 };
 
 export const handlers: Chat.Handlers = {
-	onBattleEnd(battle, winner, players) {
+	onBattleCreate(battle, players) {
 		for (const tracker of Object.values(trackers)) {
 			tracker.handleBattleEnd(battle);
 		}
